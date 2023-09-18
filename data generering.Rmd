@@ -1,0 +1,266 @@
+---
+title: "Data generering"
+author: "Carl-Magnus Sundh"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Data generering för KEX
+
+Antalet observationer. 
+
+```{r}
+n = 300 ## Antal obs
+```
+
+## Feltermerna
+
+Feltermerna är Normalfördelade med varians $\sigma^2$ och väntevärde *0*. $\sigma^2$ kommer att anta 3 värden : 1,4,10, för att undersöka hur låg, medel och hög varians påverkar resultaten
+
+$$ u_i \sim \textbf{N}(0,sigma^2) $$
+
+```{r}
+sigma2 = 0.25
+u = as.matrix(rnorm(n, mean=0, sd=sigma2)) ## felterm, rad vektor
+```
+
+## Regressions parametrarna
+
+Parametrarna, $\beta_i$ är uniformt fördelade på intervallet [-10, 10].
+Det finns *p* stycken parametrar och därför lagras de i en vektor $\vec{\beta}$
+
+$$
+ \vec{\beta} \sim \textbf{U}(-10,10)
+$$
+
+```{r}
+p = 2
+Min = -10
+Max = 10 
+
+Beta = matrix(runif(p, Min, Max))
+```
+
+## De förklarande variablerna
+
+De förklarande variablerna, $x_i$, är normalfördelade med varians *1* och
+väntevärde *0*. Det finns *p* stycken förklarande variabler och de lagras som kolonn vektorer i $\textbf{X}$.
+
+$$
+\textbf{X} \sim \textbf{N}(\vec{\mu}, \Sigma)
+$$
+Där $\vec{\mu}$ är en vektor *p*x*1* vektor med 0:or och $\Sigma$ är kovarians matrisen, som i detta fall är en *p*x*p* matris med 0:or. $\Sigma = \textbf{I}_p$.
+
+```{r, warning=FALSE}
+library(mvtnorm) ## paket för multivariata normalfördelningar
+
+Sigma = diag(p)
+mu = rep(0, p)
+
+X = rmvnorm(n, mean=mu, sigma=Sigma)
+```
+## Simulera heteroskedasticitet
+
+För att simulera heteroskedasticitet, så används $h_i$ som multipliceras med $\sigma^2$. $h_i = f(x_1,x_2...x_p)$ Alltså $\epsilon_i = u_i\sqrt{h_i}$. Detta gör att variansen av $\epsilon$ blir 
+
+$$
+V(\epsilon_i) = V(u_ih_i) = V(u_i)h_i^2 = h_i^2\sigma^2
+$$
+
+$h_i$ kan anta olika funktionella former för att simulera heteroskedasticitet. I detta fall använder jag
+
+$$
+h_i = \big|\vec{x_{2,i}} \big |u_i
+$$
+vilket betyder att variansen ökar med beloppet av det i:te värdet i $\vec{x_2}$.
+
+```{r}
+h_i = matrix(abs(X[,2]))
+
+epsilon = h_i * u
+```
+
+
+## Simulera responsvariabeln
+
+Responsvariabeln, $\vec{y}$, är en linjär funktion av $\textbf{X}$ och bruset $\vec{\epsilon}$.
+
+$$
+\vec{y} = \textbf{X}\vec{\beta} + \vec{\epsilon}
+$$
+
+```{r}
+
+y = X %*% Beta + epsilon
+
+```
+
+# Flertalet simuleringar
+
+Det finns olika fall som ska undersökas:
+
+1) Låg, medel och hög varians hos feltermen $u_i$ (1,4,10)
+2) 3 olika funktionella former hos $h_i$
+3) Litet, medel och stort antal observationer, n
+4) Antalet parametrar ska vara olika: *p*= 2,4,10.
+
+```{r, warning=FALSE}
+library(mvtnorm)
+
+simulera_linj = function(n, p, sigma2){
+
+ Y = list() ## Spara värden för x 
+ X = list() ## Spara värden för y
+ 
+ n_sim = 30 ## Antalet simuleringar
+
+ for(i in 1:n_sim){
+   Beta = matrix(runif(p, -10, 10)) ## parametrar
+
+   mu = rep(0,p)         ## Väntevärde för X
+   Sigma = diag(p)       ## Varians för X
+   x = rmvnorm(n, mean=mu, sigma=Sigma) ## förklarande variabler
+
+   u = rnorm(n, sd=sqrt(sigma2)) ## felterm
+   h = matrix(abs(x[,2]))        ## Funktionell form för h
+
+   epsilon = u*h ## Errortermen i genererat data
+
+   y = x %*% Beta + epsilon ## Responsvariabeln
+
+   Y[[i]] = y
+   X[[i]] = x
+
+ }
+ output = list(X,Y)
+ return(output)
+}
+
+n = 500    ## antal obs
+p = 4      ## antal parametrar
+sigma2 = 4 ## varians för felterm 
+
+output = simulera_linj(n, p, sigma2)
+
+X = output[[1]]
+Y = output[[2]]
+
+y_test = Y[[1]]## y
+x1= X[[1]][,1] ## x_1
+x2= X[[1]][,2] ## x_2
+x3= X[[1]][,3] ## x_3
+x4= X[[1]][,4] ## x_4
+
+
+model = lm(y_test~x1+x2+x3+x4)
+res = model$residuals
+
+
+plot(abs(x2), res) ## prop mot x2
+
+
+
+simulera_sqrt = function(n, p, sigma2){
+
+ Y = list() ## Spara värden för x 
+ X = list() ## Spara värden för y
+ 
+ n_sim = 30 ## Antalet simuleringar
+
+ for(i in 1:n_sim){
+   Beta = matrix(runif(p, -10, 10)) ## parametrar
+
+   mu = rep(0,p)         ## Väntevärde för X
+   Sigma = diag(p)       ## Varians för X
+   x = rmvnorm(n, mean=mu, sigma=Sigma) ## förklarande variabler
+
+   u = rnorm(n, sd=sqrt(sigma2)) ## felterm
+   h = matrix(abs(x[,2]))        ## Funktionell form för h
+
+   epsilon = u*sqrt(h) ## Errortermen i genererat data
+
+   y = x %*% Beta + epsilon ## Responsvariabeln
+
+   Y[[i]] = y
+   X[[i]] = x
+
+ }
+ output = list(X,Y)
+ return(output)
+}
+
+output = simulera_sqrt(n, p, sigma2)
+
+X = output[[1]]
+Y = output[[2]]
+
+y_test = Y[[1]]## y
+x1= X[[1]][,1] ## x_1
+x2= X[[1]][,2] ## x_2
+x3= X[[1]][,3] ## x_3
+x4= X[[1]][,4] ## x_4
+
+
+model = lm(y_test~x1+x2+x3+x4)
+res = model$residuals
+
+
+plot(abs(x2), res) ## prop mot sqrt(x2)
+
+simulera_inv = function(n, p, sigma2){
+
+ Y = list() ## Spara värden för x 
+ X = list() ## Spara värden för y
+ 
+ n_sim = 30 ## Antalet simuleringar
+
+ for(i in 1:n_sim){
+   Beta = matrix(runif(p, -10, 10)) ## parametrar
+
+   mu = rep(0,p)         ## Väntevärde för X
+   Sigma = diag(p)       ## Varians för X
+   x = rmvnorm(n, mean=mu, sigma=Sigma) ## förklarande variabler
+
+   u = rnorm(n, sd=sqrt(sigma2)) ## felterm
+   h = matrix(abs(x[,2]))        ## Funktionell form för h
+
+   epsilon = u*2/(h+1) ## Errortermen i genererat data
+
+   y = x %*% Beta + epsilon ## Responsvariabeln
+
+   Y[[i]] = y
+   X[[i]] = x
+
+ }
+ output = list(X,Y)
+ return(output)
+}
+
+
+output = simulera_inv(n, p, sigma2)
+
+X = output[[1]]
+Y = output[[2]]
+
+y_test = Y[[1]]## y
+x1= X[[1]][,1] ## x_1
+x2= X[[1]][,2] ## x_2
+x3= X[[1]][,3] ## x_3
+x4= X[[1]][,4] ## x_4
+
+
+model = lm(y_test~x1+x2+x3+x4)
+res = model$residuals
+
+plot(abs(x2), res)
+
+```
+
+
+
+
+
